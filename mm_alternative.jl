@@ -114,7 +114,7 @@ function mm_alternative(disp_max, mass_max, rρ, rθ, angle=0; filename)
     dgdx = zeros(2, 3 * getncells(grid))
 
     # initialize linear solver
-    fesolver = FESolver(model)
+    fesolver = LinearElasticity(model)
 
     @timeit "build filters" begin
         @info "Building density filter with radius $rρ"
@@ -167,7 +167,7 @@ function mm_alternative(disp_max, mass_max, rρ, rθ, angle=0; filename)
 
             # FE analysis
             @timeit "assemble stiffness matrix" update_stiffness!(fesolver, xPhys)
-            @timeit "linear solve" fea!(fesolver, f)
+            @timeit "linear solve" solve!(fesolver, f)
 
             @timeit "evaluate functions" begin
                 # CO2 impact and mass
@@ -204,7 +204,7 @@ function mm_alternative(disp_max, mass_max, rρ, rθ, angle=0; filename)
                 end
 
                 # Constraint: displacement at node "force"
-                fea!(fesolver, L)
+                solve!(fesolver, L)
                 lambda = fesolver.solution
                 adjoint_sensitivities!(dudx, lambda, u, fesolver)
 

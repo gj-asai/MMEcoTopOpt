@@ -43,11 +43,11 @@ function post_fea_mm(filename)
     f = compute_rhs(loads, model)
 
     # initialize linear solver
-    fesolver = FESolver(model)
+    fesolver = LinearElasticity(model)
 
     # FE analysis
     update_stiffness!(fesolver, xPhys)
-    fea!(fesolver, f)
+    solve!(fesolver, f)
 
     qp_strain, qp_principal, qp_principaldir = get_strains(fesolver)
     projector = L2Projector(ip^2, grid)
@@ -71,7 +71,7 @@ function post_fea_mm(filename)
 end
 
 # calculate strains at all quadrature points
-function get_strains(solver::FESolver)
+function get_strains(solver::LinearElasticity)
     @unpack cellvalues, grid, dh = solver.model
     dim = TopOptTools.get_dim(solver.model)
 

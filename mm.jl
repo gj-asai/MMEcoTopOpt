@@ -99,7 +99,7 @@ function mm(comp_max, volfrac, rρ, rθ, angle=0; filename)
     dgdx = zeros(2, 3 * getncells(grid))
 
     # initialize linear solver
-    fesolver = FESolver(model)
+    fesolver = LinearElasticity(model)
 
     @timeit "build filters" begin
         @info "Building density filter with radius $rρ"
@@ -150,7 +150,7 @@ function mm(comp_max, volfrac, rρ, rθ, angle=0; filename)
 
             @timeit "assemble stiffness" update_stiffness!(fesolver, xPhys)
             @timeit "linear solve" begin
-                fea!(fesolver, f)
+                solve!(fesolver, f)
                 u = fesolver.solution
             end
 

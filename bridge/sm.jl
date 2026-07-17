@@ -83,7 +83,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     end
 
     # initialize linear solver
-    fesolver = FESolver(model)
+    fesolver = LinearElasticity(model)
 
     @timeit "build filters" begin
         @info "Building density filter"
@@ -122,7 +122,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
 
             @timeit "assemble stiffness" update_stiffness!(fesolver, xPhys)
             @timeit "linear solve" begin
-                fea!(fesolver, f)
+                solve!(fesolver, f)
                 u = fesolver.solution
             end
 

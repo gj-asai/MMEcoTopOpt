@@ -75,7 +75,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     dgdx = zeros(1, 2 * getncells(grid))
 
     # initialize linear solver
-    fesolver = FESolver(model)
+    fesolver = LinearElasticity(model)
 
     @timeit "build filters" begin
         @info "Building density filter"
@@ -95,8 +95,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     # initialize MMA
     m, n = 1, length(x)
     a0mma, amma, cmma, dmma = 1.0, zeros(m), fill(1000.0, m), zeros(m)
-    xold1, xold2 = similar(x), similar(x)
-    mma = MMAWorkspace(m, n, a0mma, amma, cmma, dmma, asyinit=0.1, asyincr=1.1, asydecr=0.6, move=0.5)
+    mma = MMAWorkspace(m, n, xmin, xmax, a0mma, amma, cmma, dmma, asyinit=0.1, asyincr=1.1, asydecr=0.6, move=0.5)
 
     beta = 1
     eta = 0.5
@@ -118,7 +117,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
 
             @timeit "assemble stiffness" update_stiffness!(fesolver, xPhys)
             @timeit "linear solve" begin
-                fea!(fesolver, f)
+                solve!(fesolver, f)
                 u = fesolver.solution
             end
 
@@ -199,14 +198,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
             end
 
             # MMA update
-            @timeit "mma update" begin
-                xnew = mma_update!(mma, continuation_iter,
-                    x, xmin, xmax, xold1, xold2,
-                    c, dcdx, g, dgdx)
-                xold2 .= xold1
-                xold1 .= x
-                x .= xnew
-            end
+            @timeit "mma update" x .= mma_update!(mma, x, dcdx, g, dgdx)
         end
     catch e
         @warn "Computation interrupted - $(typeof(e))"
