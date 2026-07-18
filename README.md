@@ -1,5 +1,8 @@
 # Multimaterial topology optimization of 3D printed structures
 
+Scripts for ecoefficient optimization of multimaterial structures.
+The main dependency is the package [`TopOptTools`](https://github.com/gj-asai/TopOptTools.jl.git), which is included in this repository as a Git submodule.
+
 ## Structure
 The root of this repository contains the scripts for the optimization of a multimaterial MBB beam:
 -  `sm.jl`: single material optimization. It is used to define the feasible limits (compliance and emissions) for the multimaterial beams. Minimizes compliance subject to a volume constraint
@@ -7,7 +10,7 @@ The root of this repository contains the scripts for the optimization of a multi
 -  `mm_alternative.jl`: minimizes $CO_2$ emissions subject to displacement and mass constraints
 - `post_fea_sm.jl` and `post_fea_mm.jl`: reruns the FEA of the final optimized designs, saving more detailed strain fields
 
-jhe single- and multimaterial problems are solved for other geometries in `bridge/` and `Lbeam/`.
+The single- and multimaterial problems are solved for other geometries in `bridge/` and `Lbeam/`.
 
 To run the examples, start Julia from the root directory with:
 ```console

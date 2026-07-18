@@ -1062,7 +1062,7 @@ version = "0.5.29"
 
 [[deps.TopOptTools]]
 deps = ["Ferrite", "ForwardDiff", "LinearAlgebra", "MKL", "NearestNeighbors", "OhMyThreads", "Optim", "Pardiso", "SparseArrays", "Tensors", "UnPack"]
-path = "../TopOptTools.jl"
+path = "TopOptTools.jl"
 uuid = "d486209d-77d0-459c-90e8-0e65762702e0"
 version = "0.8.0"
 
