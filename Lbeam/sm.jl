@@ -72,7 +72,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     dgdx = zeros(1, 2 * getncells(grid))
 
     # initialize linear solver
-    fesolver = LinearElasticity(model)
+    fesolver = FEA(model, LinearElasticity(mat_interp))
 
     @timeit "build filters" begin
         @info "Building density filter"
@@ -101,12 +101,14 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
         maxiter = 1000
         for loop in 1:maxiter+1
             @timeit "filter and project" begin
+                # filter
                 xTilde .= x
                 @views TopOptTools.filter!(xTilde[1:2:end], density_filter)
                 @views TopOptTools.filter!(xTilde[2:2:end], orientation_filter)
 
-                xPhys .= xTilde
-                @views project_heaviside!(xPhys[1:2:end], beta, eta)
+                # project
+                @. xPhys[1:2:end] = (tanh(beta * eta) + tanh(beta * (xTilde[1:2:end] - eta))) / (tanh(beta * eta) + tanh(beta * (1 - eta)))
+                @. xPhys[2:2:end] = xTilde[2:2:end]
             end
 
             @timeit "assemble stiffness" update_stiffness!(fesolver, xPhys)
@@ -136,19 +138,19 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
                 fill!(dvdx, 0.0)
                 dvdx[1:2:end] .= model.elemvol
 
-                # Chain rule
-                dPhysdTilde .= xTilde
-                @views project_heaviside_derivative!(dPhysdTilde, beta, eta)
+                # Chain rule - xPhys -> xTilde
+                @. dPhysdTilde[1:2:end] = beta * sech(beta * (xTilde[1:2:end] - eta))^2 / (tanh(beta * eta) + tanh(beta * (1 - eta)))
+                @. dPhysdTilde[2:2:end] = 1.0
+                dcdx .*= dPhysdTilde
+                dvdx .*= dPhysdTilde
 
+                # Chain rule - xTilde -> x
                 # densities
-                dcdx[1:2:end] .*= dPhysdTilde[1:2:end] # xPhys -> xTilde
-                @views TopOptTools.filter!(dcdx[1:2:end], density_filter) # xTilde -> x
-
-                dvdx[1:2:end] .*= dPhysdTilde[1:2:end] # xPhys -> xTilde
-                @views TopOptTools.filter!(dvdx[1:2:end], density_filter) # xTilde -> x
-
-                # angles, no need to filter dvdtheta, it is all zero
+                @views TopOptTools.filter!(dcdx[1:2:end], density_filter)
+                @views TopOptTools.filter!(dvdx[1:2:end], density_filter)
+                # angles, no need to filter dCO2dθ and dvdθ, they are all zero
                 @views TopOptTools.filter!(dcdx[2:2:end], orientation_filter)
+   @views TopOptTools.filter!(dcdx[2:2:end], orientation_filter)
 
                 dgdx[1, :] .= dvdx / sum(model.elemvol) / volfrac
             end

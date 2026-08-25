@@ -44,7 +44,7 @@ function post_fea_sm(filename, mat)
     f = compute_rhs(loads, model)
 
     # initialize linear solver
-    fesolver = LinearElasticity(model)
+    fesolver = FEA(model, LinearElasticity(mat_interp))
 
     # FE analysis
     update_stiffness!(fesolver, xPhys)
@@ -57,7 +57,7 @@ function post_fea_sm(filename, mat)
     VTKGridFile(new_filename, grid) do vtk
         write_cell_data(vtk, xPhys[1:2:end], "density")
         write_cell_data(vtk, xPhys[2:2:end], "theta")
-        write_solution(vtk, model.dh, fesolver.u)
+        write_solution(vtk, model.dh, fesolver.solution)
 
         write_projection(vtk, projector, project(projector, qp_strain, qr), "strain")
         write_projection(vtk, projector, project(projector, qp_principal, qr), "principal strain")
@@ -72,7 +72,7 @@ end
 
 function get_strains(solver::LinearElasticity)
     @unpack cellvalues, grid, dh = solver.model
-    dim = TopOptTools.get_dim(solver.model)
+    dim = 2
 
     qp_global_strain = [
         [zero(SymmetricTensor{2,dim}) for _ in 1:getnquadpoints(cellvalues)]
@@ -94,7 +94,7 @@ function get_strains(solver::LinearElasticity)
         cell_principal = qp_principal[e]
         cell_directions = qp_directions[e]
         for q_point in 1:getnquadpoints(cellvalues)
-            ε = function_symmetric_gradient(cellvalues, q_point, solver.u, celldofs(cell))
+            ε = function_symmetric_gradient(cellvalues, q_point, solver.solution, celldofs(cell))
             cell_global_strain[q_point] = ε
 
             # sort eigenvalues by absolute value, largest first

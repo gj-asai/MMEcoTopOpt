@@ -75,7 +75,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     dgdx = zeros(1, 2 * getncells(grid))
 
     # initialize linear solver
-    fesolver = LinearElasticity(model)
+    fesolver = FEA(model, LinearElasticity(mat_interp))
 
     @timeit "build filters" begin
         @info "Building density filter"
@@ -102,17 +102,16 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     @info "Starting optimization with beta = $(beta) and p = $(mat_interp.penal)"
     try
         maxiter = 1000
-        continuation_iter = 0
         for loop in 1:maxiter+1
-            continuation_iter += 1
-
             @timeit "filter and project" begin
+                # filter
                 xTilde .= x
                 @views TopOptTools.filter!(xTilde[1:2:end], density_filter)
                 @views TopOptTools.filter!(xTilde[2:2:end], orientation_filter)
 
-                xPhys .= xTilde
-                @views project_heaviside!(xPhys[1:2:end], beta, eta)
+                # project
+                @. xPhys[1:2:end] = (tanh(beta * eta) + tanh(beta * (xTilde[1:2:end] - eta))) / (tanh(beta * eta) + tanh(beta * (1 - eta)))
+                @. xPhys[2:2:end] = xTilde[2:2:end]
             end
 
             @timeit "assemble stiffness" update_stiffness!(fesolver, xPhys)
@@ -142,18 +141,17 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
                 fill!(dvdx, 0.0)
                 dvdx[1:2:end] .= model.elemvol
 
-                # Chain rule
-                dPhysdTilde .= xTilde
-                @views project_heaviside_derivative!(dPhysdTilde, beta, eta)
+                # Chain rule - xPhys -> xTilde
+                @. dPhysdTilde[1:2:end] = beta * sech(beta * (xTilde[1:2:end] - eta))^2 / (tanh(beta * eta) + tanh(beta * (1 - eta)))
+                @. dPhysdTilde[2:2:end] = 1.0
+                dcdx .*= dPhysdTilde
+                dvdx .*= dPhysdTilde
 
+                # Chain rule - xTilde -> x
                 # densities
-                dcdx[1:2:end] .*= dPhysdTilde[1:2:end] # xPhys -> xTilde
-                @views TopOptTools.filter!(dcdx[1:2:end], density_filter) # xTilde -> x
-
-                dvdx[1:2:end] .*= dPhysdTilde[1:2:end] # xPhys -> xTilde
-                @views TopOptTools.filter!(dvdx[1:2:end], density_filter) # xTilde -> x
-
-                # angles, no need to filter dvdtheta, it is all zero
+                @views TopOptTools.filter!(dcdx[1:2:end], density_filter)
+                @views TopOptTools.filter!(dvdx[1:2:end], density_filter)
+                # angles, no need to filter dCO2dθ and dvdθ, they are all zero
                 @views TopOptTools.filter!(dcdx[2:2:end], orientation_filter)
 
                 dgdx[1, :] .= dvdx / sum(model.elemvol) / volfrac
@@ -187,14 +185,14 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
             end
 
             # apply continuation
-            if (continuation_iter >= 50 && change < 1e-4) || continuation_iter >= 150
+            if (mma.iter >= 50 && change < 1e-4) || mma.iter >= 150
                 # if at max beta, stop the optimization
                 beta == 32 && break
                 # else, increase beta and p, decrease gamma
                 beta *= 2
                 mat_interp.penal = min(3.0, mat_interp.penal + 1.0)
                 @info "Updated beta to $(beta) and p to $(mat_interp.penal)"
-                continuation_iter = 0
+                restart!(mma)
             end
 
             # MMA update

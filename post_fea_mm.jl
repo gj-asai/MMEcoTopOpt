@@ -43,7 +43,7 @@ function post_fea_mm(filename)
     f = compute_rhs(loads, model)
 
     # initialize linear solver
-    fesolver = LinearElasticity(model)
+    fesolver = FEA(model, LinearElasticity(mat_interp))
 
     # FE analysis
     update_stiffness!(fesolver, xPhys)
@@ -57,7 +57,7 @@ function post_fea_mm(filename)
         write_cell_data(vtk, xPhys[1:3:end], "density1")
         write_cell_data(vtk, xPhys[2:3:end], "density2")
         write_cell_data(vtk, xPhys[3:3:end], "theta")
-        write_solution(vtk, model.dh, fesolver.u)
+        write_solution(vtk, model.dh, fesolver.solution)
 
         write_projection(vtk, projector, project(projector, qp_strain, qr), "strain")
         write_projection(vtk, projector, project(projector, qp_principal, qr), "principal strain")
@@ -73,7 +73,7 @@ end
 # calculate strains at all quadrature points
 function get_strains(solver::LinearElasticity)
     @unpack cellvalues, grid, dh = solver.model
-    dim = TopOptTools.get_dim(solver.model)
+    dim = 2
 
     qp_global_strain = [
         [zero(SymmetricTensor{2,dim}) for _ in 1:getnquadpoints(cellvalues)]
@@ -95,7 +95,7 @@ function get_strains(solver::LinearElasticity)
         cell_principal = qp_principal[e]
         cell_directions = qp_directions[e]
         for q_point in 1:getnquadpoints(cellvalues)
-            ε = function_symmetric_gradient(cellvalues, q_point, solver.u, celldofs(cell))
+            ε = function_symmetric_gradient(cellvalues, q_point, solver.solution, celldofs(cell))
             cell_global_strain[q_point] = ε
 
             # sort eigenvalues by absolute value, largest first
@@ -118,7 +118,7 @@ MMSOMP(mat::Vector{Material{dim,T,CT}}, penal::T) where {dim,T,CT} = MMSOMP{dim,
 
 function TopOptTools.interpolate(xe::AbstractVector{T}, interp::MMSOMP{dim}) where {T<:Real,dim}
     ρ, θ = xe[1:end-1], xe[end]
-    result = zero(SymmetricTensor{4,dim,T})
+    result = zero(SymmetricTensor{4,2,T})
     for i in eachindex(interp.mat)
         weight = one(T)
         for j in eachindex(interp.mat)
@@ -128,10 +128,11 @@ function TopOptTools.interpolate(xe::AbstractVector{T}, interp::MMSOMP{dim}) whe
                 weight *= one(T) - ρ[j]^interp.penal
             end
         end
-        result += weight * rotate_mmsomp(interp.mat[i], θ)
+        result += weight * interp.mat[i].C
     end
-    result += TopOptTools.void(Val(dim)).C
+    result = TopOptTools.void(Val(dim)) + rotate(result, θ)
     return result
 end
 rotate_mmsomp(mat::Material{2}, θ) = rotate(mat.C, θ)
 rotate_mmsomp(mat::Material{3}, θ) = rotate(mat.C, Vec{3}((0.0, 0.0, 1.0)), θ)
+otate_mmsomp(mat::Material{3}, θ) = rotate(mat.C, Vec{3}((0.0, 0.0, 1.0)), θ)

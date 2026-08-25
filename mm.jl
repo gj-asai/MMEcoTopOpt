@@ -18,7 +18,7 @@ MMSOMP(mat::Vector{Material{dim,T,CT}}, penal::T) where {dim,T,CT} = MMSOMP{dim,
 # UMMI-2, for an arbitrary number of materials in 2D and in 3D
 function TopOptTools.interpolate(xe::AbstractVector{T}, interp::MMSOMP{dim}) where {T<:Real,dim}
     ρ, θ = xe[1:end-1], xe[end]
-    result = zero(SymmetricTensor{4,dim,T})
+    result = zero(SymmetricTensor{4,2,T})
     for i in eachindex(interp.mat)
         weight = one(T)
         for j in eachindex(interp.mat)
@@ -28,9 +28,9 @@ function TopOptTools.interpolate(xe::AbstractVector{T}, interp::MMSOMP{dim}) whe
                 weight *= one(T) - ρ[j]^interp.penal
             end
         end
-        result += weight * rotate_mmsomp(interp.mat[i], θ)
+        result += weight * interp.mat[i].C
     end
-    result += TopOptTools.void(Val(dim)).C
+    result = TopOptTools.void(Val(dim)) + rotate(result, θ)
     return result
 end
 rotate_mmsomp(mat::Material{2}, θ) = rotate(mat.C, θ)
@@ -99,7 +99,7 @@ function mm(comp_max, volfrac, rρ, rθ, angle=0; filename)
     dgdx = zeros(2, 3 * getncells(grid))
 
     # initialize linear solver
-    fesolver = LinearElasticity(model)
+    fesolver = FEA(model, LinearElasticity(mat_interp))
 
     @timeit "build filters" begin
         @info "Building density filter with radius $rρ"
@@ -136,16 +136,18 @@ function mm(comp_max, volfrac, rρ, rθ, angle=0; filename)
         maxiter = 1200
         for loop in 1:maxiter+1
             @timeit "filter and project" begin
+                # filter
                 xTilde .= x
                 for i in 1:nmaterials
                     @views TopOptTools.filter!(xTilde[i:nmaterials+1:end], density_filter)
                 end
                 @views TopOptTools.filter!(xTilde[nmaterials+1:nmaterials+1:end], orientation_filter)
 
-                xPhys .= xTilde
+                # project
                 for i in 1:nmaterials
-                    @views project_heaviside!(xPhys[i:nmaterials+1:end], beta, eta)
+                    @. xPhys[i:nmaterials+1:end] = (tanh(beta * eta) + tanh(beta * (xTilde[1:3:end] - eta))) / (tanh(beta * eta) + tanh(beta * (1 - eta)))
                 end
+                @. xPhys[nmaterials+1:nmaterials+1:end] = xTilde[nmaterials+1:nmaterials+1:end]
             end
 
             @timeit "assemble stiffness" update_stiffness!(fesolver, xPhys)
@@ -193,19 +195,20 @@ function mm(comp_max, volfrac, rρ, rθ, angle=0; filename)
                     dvdx[i:nmaterials+1:end] .= model.elemvol
                 end
 
-                # Chain rule
-                dPhysdTilde .= xTilde
-                @views project_heaviside_derivative!(dPhysdTilde, beta, eta)
-                # densities
+                # Chain rule - xPhys -> xTilde
                 for i in 1:nmaterials
-                    dCO2dx[i:nmaterials+1:end] .*= dPhysdTilde[i:nmaterials+1:end] # xPhys -> xTilde
-                    @views TopOptTools.filter!(dCO2dx[i:nmaterials+1:end], density_filter) # xTilde -> x
+                    @. dPhysdTilde[i:nmaterials+1:end] = beta * sech(beta * (xTilde[i:nmaterials+1:end] - eta))^2 / (tanh(beta * eta) + tanh(beta * (1 - eta)))
+                end
+                @. dPhysdTilde[nmaterials+1:nmaterials+1:end] = 1.0
+                dCO2dx .*= dPhysdTilde
+                dcdx .*= dPhysdTilde
+                dvdx .*= dPhysdTilde
 
-                    dcdx[i:nmaterials+1:end] .*= dPhysdTilde[i:nmaterials+1:end] # xPhys -> xTilde
-                    @views TopOptTools.filter!(dcdx[i:nmaterials+1:end], density_filter) # xTilde -> x
-
-                    dvdx[i:nmaterials+1:end] .*= dPhysdTilde[i:nmaterials+1:end] # xPhys -> xTilde
-                    @views TopOptTools.filter!(dvdx[i:nmaterials+1:end], density_filter) # xTilde -> x
+                # Chain rule - xTilde -> x
+                for i in 1:nmaterials
+                    @views TopOptTools.filter!(dCO2dx[i:nmaterials+1:end], density_filter)
+                    @views TopOptTools.filter!(dcdx[i:nmaterials+1:end], density_filter)
+                    @views TopOptTools.filter!(dvdx[i:nmaterials+1:end], density_filter)
                 end
                 # angles, no need to filter dCO2dθ and dvdθ, they are all zero
                 @views TopOptTools.filter!(dcdx[nmaterials+1:nmaterials+1:end], orientation_filter)
