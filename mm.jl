@@ -30,7 +30,7 @@ function TopOptTools.interpolate(xe::AbstractVector{T}, interp::MMSOMP{dim}) whe
         end
         result += weight * interp.mat[i].C
     end
-    result = TopOptTools.void(Val(dim)) + rotate(result, θ)
+    result = TopOptTools.void(Val(dim)).C + rotate(result, θ)
     return result
 end
 rotate_mmsomp(mat::Material{2}, θ) = rotate(mat.C, θ)
@@ -71,7 +71,7 @@ function mm(comp_max, volfrac, rρ, rθ, angle=0; filename)
     qr = QuadratureRule{RefQuadrilateral}(2) # 2 point quadrature
 
     # FE model
-    model = FEModel(; grid, ip, qr, mat_interp, constraints)
+    model = FEModel(; grid, ip, qr, constraints)
     f = compute_rhs(loads, model)
 
     # initialize design variables

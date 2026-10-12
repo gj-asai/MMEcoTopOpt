@@ -50,7 +50,7 @@ function somp(volfrac, rρ, rθ, angle=0; filename)
     qr = QuadratureRule{RefQuadrilateral}(2) # 2 point quadrature
 
     # FE model
-    model = FEModel(; grid, ip, qr, mat_interp, constraints)
+    model = FEModel(; grid, ip, qr, constraints)
     f = compute_rhs(loads, model)
 
     # initialize design variables

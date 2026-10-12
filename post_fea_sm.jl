@@ -40,7 +40,7 @@ function post_fea_sm(filename, mat)
     qr = QuadratureRule{RefQuadrilateral}(2) # 2 point quadrature
 
     # FE model
-    model = FEModel(; grid, ip, qr, mat_interp, constraints)
+    model = FEModel(; grid, ip, qr, constraints)
     f = compute_rhs(loads, model)
 
     # initialize linear solver
@@ -70,7 +70,7 @@ function post_fea_sm(filename, mat)
     @info "Saved $(new_filename)"
 end
 
-function get_strains(solver::LinearElasticity)
+function get_strains(solver::FEA)
     @unpack cellvalues, grid, dh = solver.model
     dim = 2
 
